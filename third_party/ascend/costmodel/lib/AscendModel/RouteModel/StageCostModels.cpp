@@ -2147,10 +2147,10 @@ mapWorkload(const LogicalStage &stage, const StageModeProfile &profile,
             rate->second.dependencyCyclesPerDot <= 0.0 ||
             !usesCalibratedDotDomain(domain, domainWork->second.first))
           continue;
-        resources.dotDependencyCriticalPath = std::max(
-            resources.dotDependencyCriticalPath,
-            std::max(0.0, depth * rate->second.dependencyCyclesPerDot -
-                              rate->second.dependencyFillCycles));
+        resources.dotDependencyCriticalPath =
+            std::max(resources.dotDependencyCriticalPath,
+                     std::max(0.0, depth * rate->second.dependencyCyclesPerDot -
+                                       rate->second.dependencyFillCycles));
       }
     }
     if (stage.features.isGridStrideLoopShell ||
@@ -2557,15 +2557,14 @@ static double estimateStageBase(const LogicalStage &stage,
   case StageCostModelKind::CubeRoofline:
   case StageCostModelKind::TinyCubeRoofline: {
     if (mode == StageMode::SIMD) {
-      const double dotService =
-          std::max(r.dot, r.dotDependencyCriticalPath);
+      const double dotService = std::max(r.dot, r.dotDependencyCriticalPath);
       if (permitsSimdOverlap(stage))
         return r.setup +
                count *
-                   std::max(r.scalar + r.predicate + r.reduction + r.shuffle +
-                                std::max({r.load, r.compute + dotService,
-                                          r.store}),
-                            r.issue);
+                   std::max(
+                       r.scalar + r.predicate + r.reduction + r.shuffle +
+                           std::max({r.load, r.compute + dotService, r.store}),
+                       r.issue);
       StageResourceCycles serialResources = r;
       serialResources.dot = dotService;
       return r.setup + count * serialBody(serialResources);
@@ -3334,11 +3333,11 @@ bool StageModeProfile::isValid(StageMode mode) const {
       validPositiveKeyTree(indirectStoreSystemCyclesBySegments, positiveLeaf);
   const bool validDotWarpCurve =
       validPositiveKeyTree(dotFlopsPerCycleByWarpCount, positiveLeaf);
-  const bool validDotInputDomains = llvm::all_of(
-      dotByInputDomain, [&](const auto &entry) {
+  const bool validDotInputDomains =
+      llvm::all_of(dotByInputDomain, [&](const auto &entry) {
         const llvm::StringRef domain(entry.first);
-        return (domain == "f16" || domain == "bf16" ||
-                domain == "f32.ieee" || domain == "f32.hf32") &&
+        return (domain == "f16" || domain == "bf16" || domain == "f32.ieee" ||
+                domain == "f32.hf32") &&
                std::isfinite(entry.second.setupCycles) &&
                entry.second.setupCycles >= 0.0 &&
                positiveLeaf(entry.second.flopsPerCycle) &&
@@ -3387,9 +3386,9 @@ bool StageModeProfile::isValid(StageMode mode) const {
                          entry.second > 0.0;
                 });
   return validDotWarpCurve && validDotInputDomains && validIndirectCurve &&
-         validIndirectElementCurve &&
-         validIndirectStoreCurve && validIndirectStartupCurve &&
-         validStoreService && validGridStrideCompositionResidual &&
+         validIndirectElementCurve && validIndirectStoreCurve &&
+         validIndirectStartupCurve && validStoreService &&
+         validGridStrideCompositionResidual &&
          validSingleResultRowReductionRecurrenceCompletion &&
          validFactorSurfaces(
              twoPassRowwiseCompletionResidualByFactorExtentAndProgramsPerSlot) &&

@@ -2047,10 +2047,10 @@ static void collectOwnedDots(Operation *operation,
         collectOwnedDots(&nested, dots);
 }
 
-static int64_t directDotCChainDepth(
-    triton::DotOp dot, const std::string &domain,
-    const llvm::SmallPtrSetImpl<Operation *> &ownedDots,
-    std::map<Operation *, int64_t> &depths) {
+static int64_t
+directDotCChainDepth(triton::DotOp dot, const std::string &domain,
+                     const llvm::SmallPtrSetImpl<Operation *> &ownedDots,
+                     std::map<Operation *, int64_t> &depths) {
   auto [position, inserted] = depths.try_emplace(dot.getOperation(), 1);
   if (!inserted)
     return position->second;

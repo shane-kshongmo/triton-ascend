@@ -778,17 +778,16 @@ bool StageWorkload::isFiniteAndNonNegative() const {
   const bool validDotDomains =
       llvm::all_of(dotInputDomainWork, [](const auto &entry) {
         const llvm::StringRef domain(entry.first);
-        return (domain == "f16" || domain == "bf16" ||
-                domain == "f32.ieee" || domain == "f32.hf32") &&
-               std::isfinite(entry.second.first) &&
-               entry.second.first >= 0.0 &&
+        return (domain == "f16" || domain == "bf16" || domain == "f32.ieee" ||
+                domain == "f32.hf32") &&
+               std::isfinite(entry.second.first) && entry.second.first >= 0.0 &&
                std::isfinite(entry.second.second) && entry.second.second >= 0.0;
       });
-  const bool validDotChainDepths = llvm::all_of(
-      dotDirectCChainDepthByInputDomain, [](const auto &entry) {
+  const bool validDotChainDepths =
+      llvm::all_of(dotDirectCChainDepthByInputDomain, [](const auto &entry) {
         const llvm::StringRef domain(entry.first);
-        return (domain == "f16" || domain == "bf16" ||
-                domain == "f32.ieee" || domain == "f32.hf32") &&
+        return (domain == "f16" || domain == "bf16" || domain == "f32.ieee" ||
+                domain == "f32.hf32") &&
                entry.second > 0;
       });
   const bool validTensorOperations = llvm::all_of(
@@ -800,11 +799,9 @@ bool StageWorkload::isFiniteAndNonNegative() const {
         return atomic.isFiniteAndNonNegative();
       });
   return validAccesses && validDotPaths && validDotDomains &&
-         validDotChainDepths && validTensorOperations &&
-         validAtomicWorkloads &&
-         validCounts(predicateCounts) &&
-         validCounts(dotFlopCounts) && validPrefixScans &&
-         validMemoryCounts(indirectLoadCounts) &&
+         validDotChainDepths && validTensorOperations && validAtomicWorkloads &&
+         validCounts(predicateCounts) && validCounts(dotFlopCounts) &&
+         validPrefixScans && validMemoryCounts(indirectLoadCounts) &&
          validSegmentedIndirect(segmentedIndirectLoadCounts) &&
          validMemoryCounts(indirectStoreCounts) &&
          validSegmentedIndirect(segmentedIndirectStoreCounts) &&
@@ -999,10 +996,10 @@ llvm::json::Object StageWorkload::toJSON() const {
   result["dot_operations_per_iteration"] = dotOperations;
   llvm::json::Array dotDomains;
   for (const auto &[domain, entry] : dotInputDomainWork)
-    dotDomains.push_back(llvm::json::Object{
-        {"input_domain", domain},
-        {"matrix_instances_per_iteration", entry.first},
-        {"flops_per_iteration", entry.second}});
+    dotDomains.push_back(
+        llvm::json::Object{{"input_domain", domain},
+                           {"matrix_instances_per_iteration", entry.first},
+                           {"flops_per_iteration", entry.second}});
   result["dot_input_domains_per_iteration"] = std::move(dotDomains);
   result["dot_has_mixed_direct_c_chain"] = dotHasMixedDirectCChain;
   llvm::json::Array dotChainDepths;

@@ -2703,8 +2703,8 @@ loadCandidateProfileUncached(llvm::StringRef pathRef,
               rate.dependencyCyclesPerDot = reader.number(
                   *entry, "dependency_system_cycles_per_dot", path);
             if (entry->get("dependency_fill_system_cycles"))
-              rate.dependencyFillCycles = reader.number(
-                  *entry, "dependency_fill_system_cycles", path);
+              rate.dependencyFillCycles =
+                  reader.number(*entry, "dependency_fill_system_cycles", path);
             simdProfile.dotByInputDomain[name.str()] = rate;
           }
         }
