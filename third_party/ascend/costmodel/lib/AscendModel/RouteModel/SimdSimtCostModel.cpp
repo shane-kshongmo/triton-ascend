@@ -9,7 +9,6 @@
 #include "AscendModel/Analysis/SimtRegisterPressureAnalysis.h"
 #include "AscendModel/Analysis/StagePartitioner.h"
 #include "AscendModel/Profile/MicrobenchmarkProfile.h"
-#include "AscendModel/RouteModel/CubeGridCostModel.h"
 #include "AscendModel/RouteModel/StageCostModels.h"
 #include "ascend/include/Utils/SuperBlockFactor.h"
 
@@ -543,8 +542,6 @@ struct CandidateProfile {
   std::string microbenchmarkContentSha256;
   StructuralProfile structural;
   KernelTimingProfile kernelTiming;
-  std::optional<CubeGridParameters> cubeGrid;
-  std::string cubeGridEvidence;
 };
 
 static bool wildcardMatchInsensitive(llvm::StringRef pattern,
@@ -2091,61 +2088,14 @@ loadCandidateProfileUncached(llvm::StringRef pathRef,
                                    "SIMD/SIMT profile root must be an object");
   auto selectionSchemaVersion = root->getInteger("schema_version");
   if (!selectionSchemaVersion ||
-      (*selectionSchemaVersion != 18 && *selectionSchemaVersion != 19 &&
-       *selectionSchemaVersion != 20))
+      (*selectionSchemaVersion != 18 && *selectionSchemaVersion != 19))
     return llvm::createStringError(
         std::errc::invalid_argument,
-        "SIMD/SIMT profile schema_version must be 18, 19 or 20");
-  const bool usesGenericResourceFormula = *selectionSchemaVersion >= 19;
+        "SIMD/SIMT profile schema_version must be 18 or 19");
+  const bool usesGenericResourceFormula = *selectionSchemaVersion == 19;
 
   CandidateProfile profile;
   ProfileJSONReader reader;
-  if (root->get("cube_grid_completion") &&
-      !root->getObject("cube_grid_completion"))
-    return llvm::createStringError(std::errc::invalid_argument,
-                                   "Cube grid calibration must be an object");
-  if (const auto *cube = root->getObject("cube_grid_completion")) {
-    if (*selectionSchemaVersion != 20 ||
-        cube->getString("model") != "cube-grid-v9" ||
-        cube->getString("target") != "Ascend950PR_9579" ||
-        !cube->getBoolean("enabled"))
-      return llvm::createStringError(std::errc::invalid_argument,
-                                     "invalid Cube grid calibration domain");
-    if (cube->getBoolean("enabled").value_or(false)) {
-      CubeGridParameters parameters;
-      auto read = [&](llvm::StringRef name, double &value) {
-        auto number = cube->getNumber(name);
-        if (!number)
-          return false;
-        value = *number;
-        return std::isfinite(value) && value >= 0;
-      };
-      if (!read("input_bytes_per_cycle", parameters.inputBytesPerCycle) ||
-          !read("transaction_startup", parameters.transactionStartup) ||
-          !read("cycles_per_quantum", parameters.cyclesPerQuantum) ||
-          !read("fill_base", parameters.fillBase) ||
-          !read("fill_input", parameters.fillInput) ||
-          !read("fill_mmad", parameters.fillMmad) ||
-          !read("fill_fix", parameters.fillFix) ||
-          !read("occupancy_base", parameters.occupancyBase) ||
-          !read("occupancy_input", parameters.occupancyInput) ||
-          !read("occupancy_fix", parameters.occupancyFix) ||
-          !read("serialized_input", parameters.serializedInput) ||
-          !read("serialized_mmad", parameters.serializedMmad) ||
-          !read("serialized_fix", parameters.serializedFix) ||
-          !read("wave_base", parameters.waveBase) ||
-          !read("wave_input", parameters.waveInput) ||
-          !read("wave_mmad", parameters.waveMmad) ||
-          !read("wave_fix", parameters.waveFix) || !parameters.isValid() ||
-          cube->getInteger("physical_ai_cores") != 28 ||
-          !cube->getString("evidence") || cube->getString("evidence")->empty())
-        return llvm::createStringError(
-            std::errc::invalid_argument,
-            "invalid Cube grid calibration parameters");
-      profile.cubeGrid = parameters;
-      profile.cubeGridEvidence = cube->getString("evidence")->str();
-    }
-  }
   std::optional<MicrobenchmarkProfile> microbenchmarkProfile;
   if (auto reference = root->getString("microbenchmark_profile")) {
     std::string resolved = resolveProfileReference(path, *reference);
@@ -2729,6 +2679,36 @@ loadCandidateProfileUncached(llvm::StringRef pathRef,
       simdProfile.dotFlopsPerCycle = resolveNumberOrMeasurement(
           *dot, "flops_per_system_cycle", "throughput_measurement",
           "flop/system_cycle", microbench, reader, "simd.dot");
+      if (dot->get("by_input_domain")) {
+        const auto *domains = dot->getObject("by_input_domain");
+        if (!domains) {
+          reader.setError("simd.dot.by_input_domain must be an object");
+        } else {
+          for (const auto &[name, value] : *domains) {
+            const auto *entry = value.getAsObject();
+            if (!entry) {
+              reader.setError("simd.dot.by_input_domain." + name.str() +
+                              " must be an object");
+              break;
+            }
+            const std::string path = "simd.dot.by_input_domain." + name.str();
+            DotInputDomainRate rate;
+            rate.setupCycles = resolveNumberOrMeasurement(
+                *entry, "startup_system_cycles", "startup_measurement",
+                "system_cycle", microbench, reader, path);
+            rate.flopsPerCycle = resolveNumberOrMeasurement(
+                *entry, "flops_per_system_cycle", "throughput_measurement",
+                "flop/system_cycle", microbench, reader, path);
+            if (entry->get("dependency_system_cycles_per_dot"))
+              rate.dependencyCyclesPerDot = reader.number(
+                  *entry, "dependency_system_cycles_per_dot", path);
+            if (entry->get("dependency_fill_system_cycles"))
+              rate.dependencyFillCycles = reader.number(
+                  *entry, "dependency_fill_system_cycles", path);
+            simdProfile.dotByInputDomain[name.str()] = rate;
+          }
+        }
+      }
     }
     readStageResources(reader, *simd, "simd", microbench, simdProfile);
     const auto predicate = simdProfile.operationRates.lookup("predicate.cmp");
@@ -4036,7 +4016,6 @@ llvm::json::Object SimdSimtCostReport::toJSON() const {
   result["source_logical_program_count_hint"] = sourceLogicalProgramCountHint;
   result["candidate_costs"] = candidateCosts.toJSON();
   result["candidate_elapsed_costs"] = candidateElapsedCosts.toJSON();
-  result["cube_grid_cost"] = llvm::json::Object(cubeGridCost);
   result["selected_route_elapsed_prediction"] = selectedRouteElapsed.toJSON();
   result["decision_kind"] = stringifySimdSimtCandidate(decision);
   llvm::json::Array selectableCandidates;
@@ -4201,50 +4180,6 @@ estimateSimdSimtCandidatesImpl(const SimdSimtFeatureSummary &features,
         "Stage Route Model found no materializable candidate");
   report.candidateElapsedCosts =
       completeCandidateCosts(report, profile, report.kernelArgumentCount);
-  report.cubeGridCost["applied"] = false;
-  report.cubeGridCost["reason"] = "profile_disabled";
-  std::optional<CubeGridCost> cubeCompletion;
-  if (profile.cubeGrid) {
-    report.cubeGridCost["reason"] = "compile_or_launch_domain_mismatch";
-    const int64_t programs = options.sourceLogicalProgramCountHint > 0
-                                 ? options.sourceLogicalProgramCountHint
-                                 : options.logicalProgramCountHint;
-    if (options.actualTarget == "Ascend950PR_9579" &&
-        options.physicalAiCoreCountHint == 28 && options.numWarps == 4 &&
-        options.numStages == 2 && options.dynamicCvPipeline == 0 &&
-        options.debug == 0 && options.disableFfts == 1 &&
-        programs == options.logicalProgramCountHint &&
-        profile.kernelTiming.systemCounterFrequencyMHz == 1000 &&
-        report.allSimdCandidateLegal &&
-        report.stageModel.allSimd.routeSuperblockFactor == 1) {
-      std::string reason;
-      cubeCompletion = matchCubeGridCost(
-          options.cubeCompositionModule ? options.cubeCompositionModule
-                                        : module,
-          programs, *profile.cubeGrid, true, reason);
-      report.cubeGridCost["reason"] = reason;
-      if (cubeCompletion) {
-        auto &detail = report.cubeGridCost;
-        detail["applied"] = true;
-        detail["reason"] = "calibrated_dense_gemm_completion";
-        detail["scope"] = "whole_all_simd_completion";
-        detail["model"] = "cube-grid-v9";
-        detail["evidence"] = profile.cubeGridEvidence;
-        detail["alias_assumption"] =
-            "distinct_pointer_arguments_use_disjoint_buffers";
-        detail["m"] = cubeCompletion->geometry.m;
-        detail["n"] = cubeCompletion->geometry.n;
-        detail["k"] = cubeCompletion->geometry.k;
-        detail["program_count"] = programs;
-        detail["generic_elapsed_reference"] =
-            report.candidateElapsedCosts.allSimd;
-        detail["elapsed_system_cycles"] = cubeCompletion->elapsedCycles;
-        // This is a replacement at the completion boundary, not an additive
-        // dot cost. Preserve Stage-body scores and their unique L/S owners.
-        report.candidateElapsedCosts.allSimd = cubeCompletion->elapsedCycles;
-      }
-    }
-  }
   report.decision =
       chooseBest(report.candidateElapsedCosts, report.allSimdCandidateLegal,
                  report.allSimtOnlyCandidateLegal, report.mixedCandidateLegal);
@@ -4264,27 +4199,6 @@ estimateSimdSimtCandidatesImpl(const SimdSimtFeatureSummary &features,
   }
   populateSelectedRouteElapsedPrediction(report, profile,
                                          report.kernelArgumentCount);
-  if (cubeCompletion && report.decision == SimdSimtCandidateKind::AllSIMD) {
-    auto &prediction = report.selectedRouteElapsed;
-    prediction = SimdSimtCostReport::SelectedRouteElapsedPrediction{};
-    prediction.applied = true;
-    prediction.candidate = "all_simd";
-    prediction.superblockFactor = 1;
-    prediction.systemCounterFrequencyMHz = 1000;
-    prediction.selectionScoreScale = 1;
-    prediction.reason = "calibrated_dense_gemm_completion";
-    prediction.calibrationName = "cube-grid-v9";
-    prediction.evidence = profile.cubeGridEvidence;
-    prediction.formula =
-        "fill + occupancy*min(P,28) + serialized*P + wave*floor((P-1)/28)";
-    prediction.fixedSystemCycles = 0;
-    prediction.runtimeArgumentSetupSystemCycles = 0;
-    prediction.scalarPrologueSystemCycles = 0;
-    prediction.scalarEpilogueSystemCycles = 0;
-    prediction.baseSelectionScore = cubeCompletion->elapsedCycles;
-    prediction.predictedSystemCounterCycles = cubeCompletion->elapsedCycles;
-    prediction.predictedMicroseconds = cubeCompletion->elapsedCycles / 1000;
-  }
   return report;
 }
 

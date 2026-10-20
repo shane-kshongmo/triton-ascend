@@ -1,33 +1,9 @@
 {
   "$schema": "./simd_simt_profile_schema.json",
-  "schema_version": 20,
-  "profile_version": "ascend-950pr-simd-simt-20261017-cube-grid-v9",
+  "schema_version": 19,
+  "profile_version": "ascend-950pr-simd-simt-20261019-v143-simd-dot-candidate",
   "target": "Ascend950PR/dav-c310",
-  "description": "Stage resource model with a bounded Cube/TinyCube dense-GEMM completion calibration. Matched G/X/F owners use the v9 completion formula for all-SIMD selection; unmatched workloads retain generic resource and boundary costs.",
-  "cube_grid_completion": {
-    "enabled": true,
-    "model": "cube-grid-v9",
-    "target": "Ascend950PR_9579",
-    "physical_ai_cores": 28,
-    "input_bytes_per_cycle": 202.25,
-    "transaction_startup": 243.7737815366516,
-    "cycles_per_quantum": 0.826162107321598,
-    "fill_base": 1216.524774849831,
-    "fill_input": 1601.4886674916365,
-    "fill_mmad": 305.10768642386216,
-    "fill_fix": 1269.1947613953987,
-    "occupancy_base": 117.41982321965838,
-    "occupancy_input": 1.60300120268717,
-    "occupancy_fix": 3.6922483637846195,
-    "serialized_input": 126.4043151942917,
-    "serialized_mmad": 14.114387736861522,
-    "serialized_fix": 105.37662470768385,
-    "wave_base": 0.0,
-    "wave_input": 205.18294116510623,
-    "wave_mmad": 0.0,
-    "wave_fix": 0.0,
-    "evidence": "Ascend950PR_9579 v9 fixed-candidate GEMM validation: 88 cases, 15 processes, 396000 active samples; analysis SHA256 78a8c57867632829ba7ab0f88f83026fd043fb0c74bcc749f2fd301222a9cb6c; maximum error 7.9875%"
-  },
+  "description": "Generic Stage Route Model hardware profile. Every kernel is derived from transformed TTIR resource workloads; absolute time adds measured kernel-boundary and global-load completion envelopes selected only by structural route facts. No operator identity, exact function DAG signature, shape whitelist, or kernel-specific elapsed intercept participates in scoring or prediction.",
   "microbenchmark_profile": "../microbench/ascend_950pr_v1.json",
   "compatible_targets": [
     "Ascend950PR_*",
@@ -293,6 +269,34 @@
       "startup_measurement": "simd.dot.tiny.dependent.startup",
       "flops_per_system_cycle": 568.16419,
       "throughput_measurement": "simd.dot.tiny.dependent.throughput",
+      "by_input_domain": {
+        "f16": {
+          "startup_system_cycles": 28.009524,
+          "flops_per_system_cycle": 1430.798021,
+          "dependency_system_cycles_per_dot": 65.4675,
+          "dependency_fill_system_cycles": 136.073333,
+          "source": "950PR device1 independent static-resident count2/4 fits at 16^3 and 32^3; direct-C long chain count8/12/16; nine untouched depths3/6/10 across three domains. Candidate pending geometry validation."
+        },
+        "bf16": {
+          "startup_system_cycles": 45.216667,
+          "flops_per_system_cycle": 2516.743472,
+          "dependency_system_cycles_per_dot": 68.003333,
+          "dependency_fill_system_cycles": 128.176667,
+          "source": "950PR device1 BF16 lowering uses IEEE MMAD; independent static-resident count2/4 fits and direct-C count8/12/16 chain. Candidate pending geometry validation."
+        },
+        "f32.ieee": {
+          "startup_system_cycles": 78.462619,
+          "flops_per_system_cycle": 691.94755,
+          "source": "950PR device1 FP32 IEEE independent static-resident count2/4 fit; long-chain count8/12/16 follows throughput arm. Candidate pending geometry validation."
+        },
+        "f32.hf32": {
+          "startup_system_cycles": 52.280952,
+          "flops_per_system_cycle": 2491.953357,
+          "dependency_system_cycles_per_dot": 66.675833,
+          "dependency_fill_system_cycles": 50.283333,
+          "source": "950PR device1 FP32 HF32 independent static-resident count2/4 fit and direct-C count8/12/16 chain. Candidate pending geometry validation."
+        }
+      },
       "source": "Ascend950PR dependent N=16/N=32 dot-chain joint fit with one final store",
       "confidence": "medium"
     },
