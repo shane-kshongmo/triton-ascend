@@ -320,10 +320,18 @@
         "by_input_domain": {
           "type": "object",
           "properties": {
-            "f16": {"$ref": "#/definitions/dot_input_domain_rate"},
-            "bf16": {"$ref": "#/definitions/dot_input_domain_rate"},
-            "f32.ieee": {"$ref": "#/definitions/dot_input_domain_rate"},
-            "f32.hf32": {"$ref": "#/definitions/dot_input_domain_rate"}
+            "f16": {
+              "$ref": "#/definitions/dot_input_domain_rate"
+            },
+            "bf16": {
+              "$ref": "#/definitions/dot_input_domain_rate"
+            },
+            "f32.ieee": {
+              "$ref": "#/definitions/dot_input_domain_rate"
+            },
+            "f32.hf32": {
+              "$ref": "#/definitions/dot_input_domain_rate"
+            }
           },
           "additionalProperties": false
         },
